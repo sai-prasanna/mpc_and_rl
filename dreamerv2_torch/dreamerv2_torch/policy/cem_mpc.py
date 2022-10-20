@@ -19,37 +19,52 @@ class CrossEntropyMethodMPC(Policy):
         self.optimisation_iters = optimisation_iters
         self.candidates, self.top_candidates = candidates, top_candidates
         self.world_model = world_model
+        self.action_mean = None
+        self.action_std = None
+        self.task_behavior_cache_plan = config.task_behavior_cache_plan
+        self.device = config.device
 
     def policy(self, state, sample: bool):
-
         with torch.no_grad():
             state = state.copy()
             for k, v in state.items():
                 B, Z = v.size(0), v.size(1)
                 state[k] = v.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
             # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
-            action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=state['deter'].device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=state['deter'].device)
+            if not self.task_behavior_cache_plan or self.action_mean is None or B != self.action_mean.size(1):
+                self.action_mean = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=self.device)
+                self.action_std = torch.ones(self.planning_horizon, B, 1, self.action_size, device=self.device)
+            else:
+                self.action_mean[:-1] = self.action_mean[1:].clone()
+                self.action_std[:-1] = self.action_std[1:].clone()
+                self.action_mean[-1] = 0.
+                self.action_std[-1] = 1.
+                
             for _ in range(self.optimisation_iters):
-                    # Evaluate J action sequences from the current belief (over entire sequence at once, batched over particles)
-                    actions = (action_mean + action_std_dev * torch.randn(self.planning_horizon, B, self.candidates, self.action_size, device=action_mean.device)).view(self.planning_horizon, B * self.candidates, self.action_size)  # Sample actions (time x (batch x candidates) x actions)
-                    actions.clamp_(min=self.min_action, max=self.max_action)  # Clip action range
-                    # Sample next states
-                    returns = []
-                    for action in actions:
-                        state = self.world_model.rssm.img_step(state, action, sample)
-                        feat = self.world_model.rssm.get_feat(state)
-                        returns.append(self.world_model.heads["reward"](feat).mode())
-                    # Calculate expected returns (technically sum of rewards over planning horizon)
-                    returns = torch.stack(returns).view(self.planning_horizon, -1).sum(dim=0)
-                    # Re-fit belief to the K best action sequences
-                    _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False)
-                    topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
-                    best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)
-                    # Update belief with new means and standard deviations
-                    action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
-            # Return first action mean µ_t
-            top_action = action_mean[0].squeeze(dim=1)
+                # Evaluate J action sequences from the current belief (over entire sequence at once, batched over particles)
+                actions = (self.action_mean + self.action_std * torch.randn(self.planning_horizon, B, self.candidates, self.action_size, device=self.device)).view(self.planning_horizon, B * self.candidates, self.action_size)  # Sample actions (time x (batch x candidates) x actions)
+                actions.clamp_(min=self.min_action, max=self.max_action)  # Clip action range
+                # Sample next states
+                returns = []
+                for action in actions:
+                    state = self.world_model.rssm.img_step(state, action, sample)
+                    feat = self.world_model.rssm.get_feat(state)
+                    returns.append(self.world_model.heads["reward"](feat).mode())
+                # Calculate expected returns (technically sum of rewards over planning horizon)
+                returns = torch.stack(returns).view(self.planning_horizon, -1).sum(dim=0)
+                # Re-fit belief to the K best action sequences
+                _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False)
+                topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
+                best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)
+                # Update belief with new means and standard deviations
+                self.action_mean, self.action_std = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
+        # Return first action mean µ_t
+            top_action = self.action_mean[0].squeeze(dim=1)
             return top_action
+    
+    def reset(self):
+        self.action_mean = None
+        self.action_std = None
 
 
 # # Model-predictive control planner with cross-entropy method and learned transition model

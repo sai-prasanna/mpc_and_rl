@@ -32,6 +32,7 @@ defaults:
   # Agent
   clip_rewards: tanh
   task_behavior: actor_critic
+  task_behavior_cache_plan: false
   expl_behavior: greedy
   expl_noise: 0.0
   eval_noise: 0.0
