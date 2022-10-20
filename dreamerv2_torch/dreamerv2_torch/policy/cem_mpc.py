@@ -21,6 +21,7 @@ class CrossEntropyMethodMPC(Policy):
         self.world_model = world_model
 
     def policy(self, state, sample: bool):
+
         with torch.no_grad():
             state = state.copy()
             for k, v in state.items():
@@ -48,9 +49,6 @@ class CrossEntropyMethodMPC(Policy):
                     action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
             # Return first action mean µ_t
             top_action = action_mean[0].squeeze(dim=1)
-            action_std_dev = action_std_dev[0].squeeze(dim=1)
-            if sample:
-                top_action = (top_action + action_std_dev * torch.randn(action_std_dev.shape, device=action_std_dev.device)).clamp(min=self.min_action, max=self.max_action)
             return top_action
 
 
