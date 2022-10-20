@@ -8,7 +8,7 @@ import re
 import sys
 import warnings
 import torch
-
+os.environ['MUJOCO_GL']="egl"
 try:
     import rich.traceback
 

@@ -8,7 +8,7 @@ from torch import Tensor
 from dreamerv2_torch import common
 from dreamerv2_torch import expl
 from dreamerv2_torch.world_model import WorldModel
-from dreamerv2_torch.policy import ActorCritic, CrossEntropyMethodMPC
+from dreamerv2_torch.policy import ActorCritic, CrossEntropyMethodMPC, GradientOptimizerMPC
 import expl
 
 
@@ -25,6 +25,8 @@ class Agent(nn.Module):
             self._task_behavior = ActorCritic(config, self.act_space, self.tfstep)
         elif config.task_behavior == 'cem':
             self._task_behavior = CrossEntropyMethodMPC(config, self.act_space, 15, 10, 1000, 100, self.wm)
+        elif config.task_behavior == 'grad':
+            self._task_behavior = GradientOptimizerMPC(config, self.act_space, 15, 10, 0.02, self.wm)
         if config.expl_behavior == "greedy":
             self._expl_behavior = self._task_behavior
         else:
