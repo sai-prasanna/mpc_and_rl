@@ -195,9 +195,9 @@ def main():
 
     train_driver.on_step(train_step)
 
-    while step < config.steps:
+    while (int(step) * config.action_repeat) < config.steps:
         logger.write()
-        print("Start evaluation.")
+        print(f"Start evaluation.")
         logger.add(agnt.report(next(eval_dataset)), prefix="eval")
         eval_driver(eval_policy, episodes=config.eval_eps)
         print("Start training.")
