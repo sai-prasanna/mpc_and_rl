@@ -1,0 +1,86 @@
+action_repeat: 2
+actor: {act: ELU, dist: auto, layers: 4, min_std: 0.1, norm: none, units: 400}
+actor_ent: 0.0001
+actor_grad: auto
+actor_grad_mix: 0.1
+actor_opt: {clip: 100, eps: 1e-05, lr: 8e-05, opt: adam, wd: 1e-06}
+atari_grayscale: true
+clip_rewards: identity
+critic: {act: ELU, dist: mse, layers: 4, norm: none, units: 400}
+critic_opt: {clip: 100, eps: 1e-05, lr: 8e-05, opt: adam, wd: 1e-06}
+dataset: {batch: 50, length: 50}
+decoder:
+  act: ELU
+  cnn_depth: 48
+  cnn_kernels: [5, 5, 6, 6]
+  cnn_keys: image
+  mlp_keys: $^
+  mlp_layers: [400, 400, 400, 400]
+  norm: none
+device: cuda:0
+disag_action_cond: true
+disag_log: false
+disag_models: 10
+disag_offset: 1
+disag_target: stoch
+discount: 0.99
+discount_head: {act: ELU, dist: binary, layers: 4, norm: none, units: 400}
+discount_lambda: 0.95
+dmc_camera: -1
+encoder:
+  act: ELU
+  cnn_depth: 48
+  cnn_kernels: [4, 4, 4, 4]
+  cnn_keys: image
+  mlp_keys: $^
+  mlp_layers: [400, 400, 400, 400]
+  norm: none
+envs: 1
+envs_parallel: none
+eval_eps: 1
+eval_every: 10000.0
+eval_noise: 0.0
+eval_state_mean: false
+expl_behavior: greedy
+expl_extr_scale: 0.0
+expl_head: {act: ELU, dist: mse, layers: 4, norm: none, units: 400}
+expl_intr_scale: 1.0
+expl_model_loss: kl
+expl_noise: 0.0
+expl_opt: {clip: 100, eps: 1e-05, lr: 0.0003, opt: adam, wd: 1e-06}
+expl_reward_norm: {eps: 1e-08, momentum: 1.0, scale: 1.0}
+expl_until: 0
+grad_heads: [decoder, reward]
+imag_horizon: 15
+jit: true
+kl: {balance: 0.8, forward: false, free: 1.0, free_avg: true}
+log_every: 10000.0
+log_keys_max: ^$
+log_keys_mean: ^$
+log_keys_sum: ^$
+log_keys_video: [image]
+logdir: logs/cartpole_cem/1337
+loss_scales: {discount: 1.0, kl: 1.0, proprio: 1.0, reward: 1.0}
+model_opt: {clip: 100, eps: 1e-05, lr: 0.0003, opt: adam, wd: 1e-06}
+precision: 32
+pred_discount: false
+prefill: 1000
+pretrain: 100
+render_size: [64, 64]
+replay: {capacity: 2000000.0, maxlen: 50, minlen: 50, ongoing: false, prioritize_ends: false}
+reward_head: {act: ELU, dist: mse, layers: 4, norm: none, units: 400}
+reward_norm: {eps: 1e-08, momentum: 1.0, scale: 1.0}
+rssm: {act: ELU, deter: 200, discrete: 0, ensemble: 1, hidden: 200, min_std: 0.1,
+  norm: none, std_act: sigmoid2, stoch: 50}
+seed: 1337
+slow_baseline: true
+slow_target: true
+slow_target_fraction: 1
+slow_target_update: 100
+steps: 200000.0
+task: dmc_cartpole_swingup
+task_behavior: cem
+task_behavior_cache_plan: false
+time_limit: 0
+train_every: 5
+train_steps: 1
