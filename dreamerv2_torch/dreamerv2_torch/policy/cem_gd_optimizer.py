@@ -9,7 +9,7 @@ import torch.distributions
 
 from .adam_projected import Adam
 
-class GradientOptimizer:
+class CEMGDOptimizer:
 
     def __init__(
         self,
@@ -214,6 +214,7 @@ class GradientOptimizer:
         callback: Optional[Callable[[torch.Tensor, torch.Tensor, int], None]] = None,
         is_resampling=True,
         use_opt=True,
+        use_cem=True,
         trial_step=None
     ) -> torch.Tensor:
         """Runs the optimization using CEM.
@@ -236,17 +237,21 @@ class GradientOptimizer:
         """
         init = (trial_step == 0)
 
-        top_trajectories = self.get_top_trajectories(reward_fun, x0, default_x0, 
-            callback, use_opt=use_opt, is_resampling=is_resampling, flag=False, init=init)
+        if use_cem:
+            top_trajectories = self.get_top_trajectories(reward_fun, x0, default_x0, 
+                callback, use_opt=use_opt, is_resampling=is_resampling, flag=False, init=init)
+        else:
+            top_trajectories = [x0.clone()]
 
         if use_opt:
             top_trajectories = self.optimize_trajectory_batch(obj_fun, top_trajectories)
-        
-        trajectory_batch = torch.stack(top_trajectories)
-        batch_rew = reward_fun(trajectory_batch, sample=False)
-        i = torch.argmax(batch_rew)
-        best_trajectory = trajectory_batch[i]
-
+        if len(top_trajectories) > 1:
+            trajectory_batch = torch.stack(top_trajectories)
+            batch_rew = reward_fun(trajectory_batch, sample=False)
+            i = torch.argmax(batch_rew)
+            best_trajectory = trajectory_batch[i]
+        else:
+            best_trajectory = top_trajectories[0]
         if torch.any(best_trajectory.isnan()) or torch.any(best_trajectory.isinf()):
             best_trajectory = x0
         best_trajectory = torch.squeeze(best_trajectory, dim=0)
@@ -282,7 +287,7 @@ class TrajectoryOptimizer:
     def __init__(
         self,
         device: str,
-        optimizer: GradientOptimizer,
+        optimizer: CEMGDOptimizer,
         action_lb: np.ndarray,
         action_ub: np.ndarray,
         planning_horizon: int,
@@ -312,6 +317,7 @@ class TrajectoryOptimizer:
         reward_fun: Callable[[torch.Tensor, bool], torch.Tensor],
         cost_fun: Callable[[torch.Tensor, bool], torch.Tensor],
         use_opt: bool = True,
+        use_cem: bool = True,
         callback: Optional[Callable] = None,
         trial_step=None
     ) -> torch.Tensor:
@@ -354,6 +360,7 @@ class TrajectoryOptimizer:
                 callback=callback,
                 is_resampling=True,
                 use_opt=use_opt,
+                use_cem=use_cem,
                 trial_step=trial_step
             )
             self.init = False
@@ -366,6 +373,7 @@ class TrajectoryOptimizer:
                 callback=callback,
                 is_resampling=False,
                 use_opt=use_opt,
+                use_cem=use_cem,
                 trial_step=trial_step
             )
 

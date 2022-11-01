@@ -8,7 +8,7 @@ import torch
 from copy import deepcopy
 from torch import Tensor, jit
 # https://github.com/Kaixhin/PlaNet/blob/master/planner.py
-from .cem_gd_optimizer import GradientOptimizer, TrajectoryOptimizer
+from .cem_gd_optimizer import CEMGDOptimizer, TrajectoryOptimizer
 
 # Model-predictive control planner with cross-entropy method and learned transition model
 class CrossEntropyGDMPC(Policy):
@@ -18,7 +18,7 @@ class CrossEntropyGDMPC(Policy):
 
         self.traj_optimizer = TrajectoryOptimizer(
             device=config.device,
-            optimizer=GradientOptimizer(
+            optimizer=CEMGDOptimizer(
                 num_iterations=num_iterations, 
                 elite_ratio=elite_ratio,
                 population_size=population_size, 
@@ -69,7 +69,9 @@ class CrossEntropyGDMPC(Policy):
             # Calculate expected returns (technically sum of rewards over planning horizon)
             values = torch.stack(returns).view(trajectories.size(1), -1).sum(dim=0)
             return values
-        return self.traj_optimizer.optimize(reward_fun, cost_fun)[0].unsqueeze(0)
+        return self.traj_optimizer.optimize(reward_fun, cost_fun, use_opt=True, use_cem=True)[0].unsqueeze(0)
 
     def reset(self):
         self.traj_optimizer.reset()
+
+# python3 dreamerv2_torch/train.py --logdir logs/cartpole_cem_gd/1337 --configs dmc_vision --task dmc_cartpole_swingup --task_behavior cem_gd --seed 1337 --steps 2e5

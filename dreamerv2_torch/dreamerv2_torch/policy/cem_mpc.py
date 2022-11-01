@@ -1,55 +1,61 @@
 from math import inf
 import nntplib
+from typing import Dict
 from dreamerv2_torch.policy.policy import Policy
 from dreamerv2_torch.world_model import WorldModel
+import numpy as np
 import torch
-from torch import jit
+from copy import deepcopy
+from torch import Tensor, jit
 # https://github.com/Kaixhin/PlaNet/blob/master/planner.py
-
+from .cem_gd_optimizer import CEMGDOptimizer, TrajectoryOptimizer
 
 # Model-predictive control planner with cross-entropy method and learned transition model
 class CrossEntropyMethodMPC(Policy):
   
-    def __init__(self, config, act_space, planning_horizon, optimisation_iters, candidates, top_candidates, world_model):
+    def __init__(self, config, act_space, world_model, num_iterations, planning_horizon, elite_ratio, population_size, alpha, num_top, resample_amount):
         super().__init__()
-        self.action_size = int(act_space.shape[0])
-        self.min_action = torch.tensor(act_space.low, device=config.device)
-        self.max_action = torch.tensor(act_space.high, device=config.device)
-        self.planning_horizon = planning_horizon
-        self.optimisation_iters = optimisation_iters
-        self.candidates, self.top_candidates = candidates, top_candidates
+
+        self.traj_optimizer = TrajectoryOptimizer(
+            device=config.device,
+            optimizer=CEMGDOptimizer(
+                num_iterations=num_iterations, 
+                elite_ratio=elite_ratio,
+                population_size=population_size, 
+                alpha=alpha,
+                num_top=num_top,
+                resample_amount=resample_amount,
+                device=config.device, 
+                lower_bound=np.tile(act_space.low, (planning_horizon, 1)).tolist(),
+                upper_bound=np.tile(act_space.low, (planning_horizon, 1)).tolist()),
+            action_lb=act_space.low,
+            action_ub=act_space.high,
+            planning_horizon=planning_horizon,
+            resample=False,
+        )
         self.world_model = world_model
-
-    def policy(self, state, sample: bool):
-
-        with torch.no_grad():
-            state = state.copy()
-            for k, v in state.items():
+    
+    def policy(self, state: Dict[str, Tensor], sample: bool):
+        def reward_fun(trajectories, sample):
+            nonlocal state
+            current_state = state.copy()
+            for k, v in current_state.items():
                 B, Z = v.size(0), v.size(1)
-                state[k] = v.unsqueeze(dim=1).expand(B, self.candidates, Z).reshape(-1, Z)
-            # Initialize factorized belief over action sequences q(a_t:t+H) ~ N(0, I)
-            action_mean, action_std_dev = torch.zeros(self.planning_horizon, B, 1, self.action_size, device=state['deter'].device), torch.ones(self.planning_horizon, B, 1, self.action_size, device=state['deter'].device)
-            for _ in range(self.optimisation_iters):
-                    # Evaluate J action sequences from the current belief (over entire sequence at once, batched over particles)
-                    actions = (action_mean + action_std_dev * torch.randn(self.planning_horizon, B, self.candidates, self.action_size, device=action_mean.device)).view(self.planning_horizon, B * self.candidates, self.action_size)  # Sample actions (time x (batch x candidates) x actions)
-                    actions.clamp_(min=self.min_action, max=self.max_action)  # Clip action range
-                    # Sample next states
-                    returns = []
-                    current_state = state
-                    for action in actions:
-                        current_state = self.world_model.rssm.img_step(current_state, action, sample)
-                        feat = self.world_model.rssm.get_feat(current_state)
-                        returns.append(self.world_model.heads["reward"](feat).mode())
-                    # Calculate expected returns (technically sum of rewards over planning horizon)
-                    returns = torch.stack(returns).view(self.planning_horizon, -1).sum(dim=0)
-                    # Re-fit belief to the K best action sequences
-                    _, topk = returns.reshape(B, self.candidates).topk(self.top_candidates, dim=1, largest=True, sorted=False)
-                    topk += self.candidates * torch.arange(0, B, dtype=torch.int64, device=topk.device).unsqueeze(dim=1)  # Fix indices for unrolled actions
-                    best_actions = actions[:, topk.view(-1)].reshape(self.planning_horizon, B, self.top_candidates, self.action_size)
-                    # Update belief with new means and standard deviations
-                    action_mean, action_std_dev = best_actions.mean(dim=2, keepdim=True), best_actions.std(dim=2, unbiased=False, keepdim=True)
-            # Return first action mean µ_t
-            top_action = action_mean[0].squeeze(dim=1)
-            return top_action
+                assert B == 1
+                current_state[k] = v.unsqueeze(dim=1).expand(B, trajectories.size(0), Z).reshape(-1, Z)
+            returns = []
+            actions = trajectories.transpose(0, 1)
+            with torch.no_grad():
+                for action in actions:
+                    current_state = self.world_model.rssm.img_step(current_state, action, sample)
+                    feat = self.world_model.rssm.get_feat(current_state)
+                    returns.append(self.world_model.heads["reward"](feat).mode())
+            # Calculate expected returns (technically sum of rewards over planning horizon)
+                values = torch.stack(returns).view(trajectories.size(1), -1).sum(dim=0)
+                return values  
+        return self.traj_optimizer.optimize(reward_fun, None, use_opt=False, use_cem=True)[0].unsqueeze(0)
 
+    def reset(self):
+        self.traj_optimizer.reset()
 
+# python3 dreamerv2_torch/train.py --logdir logs/cartpole_cem/1337 --configs dmc_vision --task dmc_cartpole_swingup --task_behavior cem --seed 1337 --steps 2e5
