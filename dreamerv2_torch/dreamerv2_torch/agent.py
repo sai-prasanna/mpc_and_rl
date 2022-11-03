@@ -24,11 +24,11 @@ class Agent(nn.Module):
         if config.task_behavior == 'actor_critic':
             self._task_behavior = ActorCritic(config, self.act_space, self.tfstep)
         elif config.task_behavior == 'cem':
-            self._task_behavior = CrossEntropyMethodMPC(config, self.act_space, planning_horizon=15, num_iterations=5, elite_ratio=0.1, world_model=self.wm, population_size=1000, alpha=0.1, num_top=1, resample_amount=10)
+            self._task_behavior = CrossEntropyMethodMPC(config, self.act_space, planning_horizon=15, num_iterations=10, elite_ratio=0.1, world_model=self.wm, population_size=1000, alpha=0.1, num_top=1, resample_amount=100)
         elif config.task_behavior == 'gd':
             self._task_behavior = GradientMPC(config, self.act_space, self.wm, planning_horizon=15)
         elif config.task_behavior == 'cem_gd':
-            self._task_behavior = CrossEntropyGDMPC(config, self.act_space, planning_horizon=15, num_iterations=5, elite_ratio=0.1, world_model=self.wm, population_size=1000, alpha=0.1, num_top=1, resample_amount=10)
+            self._task_behavior = CrossEntropyGDMPC(config, self.act_space, planning_horizon=15, num_iterations=10, elite_ratio=0.1, world_model=self.wm, population_size=1000, alpha=0.1, num_top=1, resample_amount=100)
         if config.expl_behavior == "greedy":
             self._expl_behavior = self._task_behavior
         else:

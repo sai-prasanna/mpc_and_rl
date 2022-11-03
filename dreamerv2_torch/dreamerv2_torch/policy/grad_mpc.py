@@ -27,7 +27,7 @@ class GradientMPC(Policy):
                 resample_amount=1,
                 device=config.device,
                 lower_bound=np.tile(act_space.low, (planning_horizon, 1)).tolist(),
-                upper_bound=np.tile(act_space.low, (planning_horizon, 1)).tolist()),
+                upper_bound=np.tile(act_space.high, (planning_horizon, 1)).tolist()),
             action_lb=act_space.low,
             action_ub=act_space.high,
             planning_horizon=planning_horizon,
